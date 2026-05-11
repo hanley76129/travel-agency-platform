@@ -54,8 +54,12 @@ async def search_hotels(
     checkout_date: str = Query(..., description="Format: YYYY-MM-DD"),
     room_number: int = Query(1, ge=1),
     adults_number: int = Query(1, ge=1),
+    pet_friendly: bool = Query(False, description="When true, filters to pet-friendly hotels only"),
     service: RapidApiService = Depends(get_rapidapi_service),
 ):
+    if pet_friendly:
+        categories_filter_ids = "facility::4"
+
     try:
         return service.search_hotels(
             page_number=page_number,
@@ -93,6 +97,7 @@ async def search_flights(
     cabin_class: str = Query("ECONOMY"),
     children_ages: str | None = Query(None, description="Comma-separated ages, e.g. 5,0"),
     return_date: str | None = Query(None, description="Format: YYYY-MM-DD"),
+    pet_friendly: bool = Query(False, description="Indicates traveler is traveling with a pet"),
     service: RapidApiService = Depends(get_rapidapi_service),
 ):
     try:
