@@ -18,7 +18,7 @@ npm run dev
 
 ## Enable Agency URLs (Windows)
 
-Open:
+Open with Notepad, run as Administrator: 
 
 ```txt
 C:\Windows\System32\drivers\etc\hosts
@@ -30,6 +30,16 @@ Add:
 127.0.0.1 agenta.local
 127.0.0.1 agentb.local
 ```
+
+### Mac / Linux
+
+Run:
+
+```bash
+sudo sh -c 'printf "\n127.0.0.1 agenta.local\n127.0.0.1 agentb.local\n" >> /etc/hosts'
+```
+
+---
 
 ## Open the App
 
