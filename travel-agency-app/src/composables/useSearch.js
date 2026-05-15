@@ -12,6 +12,7 @@ export function useSearch() {
     toDate: '',
     adults: 1,
     children: 0,
+    petFriendly: false,
   }
 
   const searchParams = reactive({

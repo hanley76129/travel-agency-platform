@@ -308,6 +308,7 @@ async function searchHotelsViaApi(searchParams) {
         checkout_date: searchParams.toDate,
         room_number: 1,
         adults_number: Number(searchParams.adults) || 1,
+        pet_friendly: Boolean(searchParams.petFriendly),
       },
       headers: {
         accept: 'application/json',
@@ -328,8 +329,8 @@ async function searchHotelsViaApi(searchParams) {
 }
 
 export const hotelService = {
-  async search({ destination, fromDate, toDate, adults, children }) {
-    const searchParams = { destination, fromDate, toDate, adults, children }
+  async search({ destination, fromDate, toDate, adults, children, petFriendly }) {
+    const searchParams = { destination, fromDate, toDate, adults, children, petFriendly }
 
     try {
       const hotels = await searchHotelsViaApi(searchParams)

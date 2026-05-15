@@ -9,15 +9,26 @@ const { userId, userEmail } = useAuth()
 const isLoading = ref(true)
 const errorMessage = ref('')
 const trips = ref([])
+const editingBookingId = ref(null)
+const editStartDate = ref('')
+const editEndDate = ref('')
+const editError = ref('')
+const isSavingEdit = ref(false)
 
 function formatDate(value) {
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return value || 'N/A'
-  return date.toLocaleDateString('en-GB', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  })
+  if (!value) return 'N/A'
+
+  const raw = String(value).split('T')[0]
+  const parts = raw.split('-')
+
+  if (parts.length === 3) {
+    const [year, month, day] = parts
+    return `${day} ${new Date(Number(year), Number(month) - 1, Number(day)).toLocaleString('en-GB', {
+      month: 'short',
+    })} ${year}`
+  }
+
+  return value
 }
 
 const tripCountLabel = computed(() => {
@@ -39,6 +50,70 @@ async function loadTrips() {
     trips.value = []
   } finally {
     isLoading.value = false
+  }
+}
+
+function startEdit(trip) {
+  editingBookingId.value = trip.bookingId
+  editStartDate.value = trip.startDate
+  editEndDate.value = trip.endDate
+  editError.value = ''
+}
+
+function cancelEdit() {
+  editingBookingId.value = null
+  editStartDate.value = ''
+  editEndDate.value = ''
+  editError.value = ''
+}
+
+async function saveEdit(trip) {
+  isSavingEdit.value = true
+  editError.value = ''
+
+  try {
+    // Update parent booking
+    await bookingService.updateBooking(trip.bookingId, {
+      Start_Date: editStartDate.value,
+      End_Date: editEndDate.value,
+    })
+
+    // Update hotel reservations
+    await Promise.all(
+      trip.hotelReservations.map((hotel) =>
+        bookingService.updateHotelReservation(
+          trip.bookingId,
+          hotel.Reservation_No,
+          {
+            Check_In_Date: editStartDate.value,
+            Check_Out_Date: editEndDate.value,
+          }
+        )
+      )
+    )
+
+    // Update flight reservations
+    await Promise.all(
+      trip.flightReservations.map((flight, index) => {
+        const flightDate = index === 0 ? editStartDate.value : editEndDate.value
+
+        return bookingService.updateFlightReservation(
+          trip.bookingId,
+          flight.Reservation_No,
+          {
+            Departure_Date: flightDate,
+            Arrive_Date: flightDate,
+          }
+        )
+      })
+    )
+
+    cancelEdit()
+    await loadTrips()
+  } catch (error) {
+    editError.value = error.message || 'Unable to update booking.'
+  } finally {
+    isSavingEdit.value = false
   }
 }
 
@@ -72,6 +147,31 @@ onMounted(() => {
             <h2 class="trip-card__title">{{ formatDate(trip.startDate) }} to {{ formatDate(trip.endDate) }}</h2>
           </div>
           <div class="trip-card__pill">{{ trip.flightReservations.length }} flights · {{ trip.hotelReservations.length }} hotels</div>
+          <div class="trip-card__actions">
+            <button class="btn-edit" @click="startEdit(trip)">Edit</button>
+          </div>
+        </div>
+
+        <div v-if="editingBookingId === trip.bookingId" class="edit-panel">
+          <label>
+            Start date
+            <input v-model="editStartDate" type="date" />
+          </label>
+
+          <label>
+            End date
+            <input v-model="editEndDate" type="date" />
+          </label>
+
+          <button :disabled="isSavingEdit" @click="saveEdit(trip)">
+            {{ isSavingEdit ? 'Saving...' : 'Save' }}
+          </button>
+
+          <button :disabled="isSavingEdit" @click="cancelEdit">
+            Cancel
+          </button>
+
+          <p v-if="editError" class="edit-panel__error">{{ editError }}</p>
         </div>
 
         <section class="trip-section">
@@ -260,5 +360,58 @@ onMounted(() => {
     flex-direction: column;
     align-items: flex-start;
   }
+}
+
+.trip-card__actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.btn-edit {
+  padding: 0.45rem 0.75rem;
+  border-radius: 8px;
+  border: 1px solid var(--color-border);
+  background: #fff;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.edit-panel {
+  display: flex;
+  gap: 0.75rem;
+  align-items: end;
+  flex-wrap: wrap;
+  margin-bottom: 1.25rem;
+  padding: 1rem;
+  border-radius: 12px;
+  background: #f8fbff;
+  border: 1px solid var(--color-border);
+}
+
+.edit-panel label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+
+.edit-panel input {
+  padding: 0.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+}
+
+.edit-panel button {
+  padding: 0.55rem 0.85rem;
+  border-radius: 8px;
+  border: 1px solid var(--color-border);
+  cursor: pointer;
+}
+
+.edit-panel__error {
+  color: #c0392b;
+  width: 100%;
+  margin: 0.5rem 0 0;
 }
 </style>

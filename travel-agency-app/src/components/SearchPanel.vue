@@ -135,6 +135,19 @@ function handleClear() {
           />
         </div>
 
+        <!-- Pets -->
+        <div class="field field--narrow">
+          <label class="field__label">
+            <span class="field__icon">🐾</span> Pets
+          </label>
+
+          <input
+            v-model="searchParams.petFriendly"
+            class="field__input field__checkbox"
+            type="checkbox"
+          />
+        </div>
+
         <!-- Search Button -->
         <div class="field field--action">
           <div class="action-buttons">

@@ -188,4 +188,21 @@ export const bookingService = {
       return new Date(right.startDate).getTime() - new Date(left.startDate).getTime()
     })
   },
+
+  async updateBooking(bookingId, updateData) {
+    const response = await api.patch(`/bookings/${bookingId}`, updateData)
+    return normalizeBookingRecord(response)
+  },
+
+  async updateHotelReservation(bookingId, reservationNo, updateData) {
+    return api.patch(`/bookings/${bookingId}/hotel-reservations/${reservationNo}`, updateData)
+  },
+
+  async updateFlightReservation(bookingId, reservationNo, updateData) {
+    return api.patch(`/bookings/${bookingId}/flight-reservations/${reservationNo}`, updateData)
+  },
+
+  async deleteBooking(bookingId) {
+    return api.delete(`/bookings/${bookingId}`)
+  },
 }

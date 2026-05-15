@@ -27,7 +27,8 @@ const AIRPORT_ALIASES = {
 
 const FLIGHT_API_BASE_URL = import.meta.env.VITE_FLIGHT_API_BASE_URL?.replace(/\/$/, '')
 const FLIGHT_TIMEOUT_MS = Number(import.meta.env.VITE_FLIGHT_TIMEOUT_MS || 30000)
-const FLIGHT_RETRY_COUNT = Number(import.meta.env.VITE_FLIGHT_RETRY_COUNT || 1)
+//const FLIGHT_RETRY_COUNT = Number(import.meta.env.VITE_FLIGHT_RETRY_COUNT || 1)
+const FLIGHT_RETRY_COUNT = 0
 
 function isTimeoutError(error) {
   return error?.code === 'ECONNABORTED' || /timeout/i.test(String(error?.message || ''))
@@ -220,13 +221,6 @@ async function searchFlightsViaApi(searchParams) {
     throw new Error('VITE_FLIGHT_API_BASE_URL is not configured.')
   }
 
-  const fromDate = searchParams.fromDate
-  const toDate = searchParams.toDate
-  const requestedTripType = String(searchParams.tripType || 'ROUNDTRIP').toUpperCase()
-  const isRoundTrip = requestedTripType === 'ROUNDTRIP'
-    && Boolean(fromDate && toDate && new Date(toDate) > new Date(fromDate))
-  const adultCount = Number(searchParams.adults) || 1
-  const childCount = Math.max(0, Number(searchParams.children) || 0)
   const normalizedOrigin = normalizeAirport(searchParams.origin)
   const normalizedDestination = normalizeAirport(searchParams.destination)
 
@@ -238,68 +232,39 @@ async function searchFlightsViaApi(searchParams) {
     throw new Error('Origin and destination must be different airports.')
   }
 
-  const params = {
-    depart_date: fromDate,
-    from_code: `${normalizedOrigin}.AIRPORT`,
-    to_code: `${normalizedDestination}.AIRPORT`,
-    adults: adultCount,
-    children: childCount,
-    children_number: childCount,
-    locale: 'en-gb',
-    page_number: 0,
-    currency: 'AED',
-    order_by: 'BEST',
-    flight_type: isRoundTrip ? 'ROUNDTRIP' : 'ONEWAY',
-    cabin_class: 'ECONOMY',
+  try {
+    const response = await axios.get(`${FLIGHT_API_BASE_URL}/flights/search`, {
+      params: {
+        depart_date: searchParams.fromDate,
+        from_code: `${normalizedOrigin}.AIRPORT`,
+        to_code: `${normalizedDestination}.AIRPORT`,
+        adults: Number(searchParams.adults) || 1,
+        locale: 'en-gb',
+        page_number: 0,
+        currency: 'AED',
+        order_by: 'BEST',
+        flight_type: searchParams.tripType === 'ROUNDTRIP' ? 'ROUNDTRIP' : 'ONEWAY',
+        cabin_class: 'ECONOMY',
+        return_date: searchParams.tripType === 'ROUNDTRIP' ? searchParams.toDate : undefined,
+        pet_friendly: Boolean(searchParams.petFriendly),
+      },
+      headers: {
+        accept: 'application/json',
+      },
+      timeout: FLIGHT_TIMEOUT_MS,
+    })
+
+    return extractFlightOffers(response.data)
+      .map((offer, index) => mapOfferToFlight(offer, index, searchParams))
+      .filter(Boolean)
+      .sort((left, right) => left.totalPrice - right.totalPrice)
+  } catch (error) {
+    throw new Error(getApiErrorMessage(error, 'Flight search failed.'))
   }
-
-  if (isRoundTrip) {
-    params.return_date = toDate
-  }
-
-  const maxAttempts = Math.max(1, Number.isFinite(FLIGHT_RETRY_COUNT) ? Math.floor(FLIGHT_RETRY_COUNT) + 1 : 2)
-  const requestTimeoutMs = Number.isFinite(FLIGHT_TIMEOUT_MS) && FLIGHT_TIMEOUT_MS > 0
-    ? Math.floor(FLIGHT_TIMEOUT_MS)
-    : 30000
-
-  let lastError = null
-
-  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-    try {
-      const response = await axios.get(`${FLIGHT_API_BASE_URL}/flights/search`, {
-        params,
-        headers: {
-          accept: 'application/json',
-        },
-        timeout: requestTimeoutMs,
-      })
-
-      return extractFlightOffers(response.data)
-        .map((offer, index) => mapOfferToFlight(offer, index, searchParams))
-        .filter((flight) => flight && flight.totalPrice > 0)
-        .sort((left, right) => left.totalPrice - right.totalPrice)
-    } catch (error) {
-      lastError = error
-      const canRetry = attempt < maxAttempts && isTimeoutError(error)
-      if (canRetry) continue
-
-      if (isTimeoutError(error)) {
-        throw new Error('Flight search timed out. Please try again in a moment.')
-      }
-
-      throw new Error(getApiErrorMessage(error, 'Flight search failed.'))
-    }
-  }
-
-  if (isTimeoutError(lastError)) {
-    throw new Error('Flight search timed out. Please try again in a moment.')
-  }
-
-  throw new Error(getApiErrorMessage(lastError, 'Flight search failed.'))
 }
 
 export const flightService = {
-  async search({ origin, destination, fromDate, toDate, adults, children, tripType }) {
+  async search({ origin, destination, fromDate, toDate, adults, children, tripType, petFriendly }) {
     const flights = await searchFlightsViaApi({
       origin,
       destination,
@@ -308,6 +273,7 @@ export const flightService = {
       adults,
       children,
       tripType,
+      petFriendly,
     })
 
     if (flights.length === 0) {
