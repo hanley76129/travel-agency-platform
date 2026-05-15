@@ -11,7 +11,7 @@ def get_travel_service() -> TravelService:
     return TravelService(get_amadeus_client())
 
 
-@router.get("/flights/search")
+@router.get("/amadeus/flights/search")
 async def search_flights(
     origin: str,
     destination: str,
