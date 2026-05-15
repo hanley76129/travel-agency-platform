@@ -39,8 +39,6 @@ Run:
 sudo sh -c 'printf "\n127.0.0.1 agenta.local\n127.0.0.1 agentb.local\n" >> /etc/hosts'
 ```
 
----
-
 ## Open the App
 
 ```txt
