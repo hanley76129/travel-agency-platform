@@ -1,7 +1,12 @@
+import os
+import requests
+from dotenv import load_dotenv
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.core.rapidapi_client import RapidApiError, get_rapidapi_client
 from app.services.rapidapi_service import RapidApiService
+
+load_dotenv()
 
 router = APIRouter(prefix="", tags=["rapidapi"])
 
@@ -11,29 +16,43 @@ def get_rapidapi_service() -> RapidApiService:
 
 @router.get("/attractions/search")
 async def search_attractions(
-    start_date: str = Query(..., description="Format: YYYY-MM-DD"),
-    end_date: str = Query(..., description="Format: YYYY-MM-DD"),
-    dest_name: str = Query(..., description="Example: New York"),
-    country_name: str = Query(..., description="Example: United States"),
-    locale: str = Query("en-gb"),
-    page_number: int = Query(0, ge=0),
-    currency: str = Query("AED"),
-    order_by: str = Query("attr_book_score"),
-    service: RapidApiService = Depends(get_rapidapi_service),
+    lat: float = Query(...),
+    lon: float = Query(...),
+    radius: int = Query(10000),
+    limit: int = Query(20),
 ):
+    api_key = os.getenv("GEOAPIFY_API_KEY")
+
+    if not api_key:
+        raise HTTPException(status_code=500, detail="GEOAPIFY_API_KEY not configured")
+
     try:
-        return service.search_attractions(
-            start_date=start_date,
-            end_date=end_date,
-            dest_name=dest_name,
-            country_name=country_name,
-            locale=locale,
-            page_number=page_number,
-            currency=currency,
-            order_by=order_by,
+        response = requests.get(
+            "https://api.geoapify.com/v2/places",
+            params={
+                "categories": ",".join([
+                    "leisure.park",
+                    "leisure.park.garden",
+                    "leisure.park.nature_reserve",
+                    "national_park",
+                    "natural",
+                    "natural.forest",
+                    "natural.water",
+                    "tourism.sights",
+                ]),
+                "filter": f"circle:{lon},{lat},{radius}",
+                "limit": limit,
+                "apiKey": api_key,
+            },
+            timeout=20,
         )
-    except RapidApiError as error:
-        raise HTTPException(status_code=error.status_code, detail=error.detail) from error
+    except Exception as error:
+        raise HTTPException(status_code=500, detail=str(error)) from error
+
+    if response.status_code >= 400:
+        raise HTTPException(status_code=response.status_code, detail=response.text)
+
+    return response.json()
 
 
 @router.get("/hotels/search")
