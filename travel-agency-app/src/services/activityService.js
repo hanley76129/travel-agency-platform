@@ -53,6 +53,31 @@ const DESTINATION_ALIASES = {
   FCO: 'Rome, Italy',
 }
 
+const CITY_COORDINATES = {
+  'New York, USA': { lat: 40.7128, lon: -74.0060 },
+  'Los Angeles, USA': { lat: 34.0522, lon: -118.2437 },
+  'San Francisco, USA': { lat: 37.7749, lon: -122.4194 },
+  'Paris, France': { lat: 48.8566, lon: 2.3522 },
+  'London, UK': { lat: 51.5072, lon: -0.1276 },
+  'Tokyo, Japan': { lat: 35.6762, lon: 139.6503 },
+  'Honolulu, USA': { lat: 21.3069, lon: -157.8583 },
+  'Chicago, USA': { lat: 41.8781, lon: -87.6298 },
+  'Miami, USA': { lat: 25.7617, lon: -80.1918 },
+  'Seattle, USA': { lat: 47.6062, lon: -122.3321 },
+  'Boston, USA': { lat: 42.3601, lon: -71.0589 },
+  'Dubai, UAE': { lat: 25.2048, lon: 55.2708 },
+  'Singapore': { lat: 1.3521, lon: 103.8198 },
+  'Sydney, Australia': { lat: -33.8688, lon: 151.2093 },
+  'Seoul, South Korea': { lat: 37.5665, lon: 126.9780 },
+  'Bangkok, Thailand': { lat: 13.7563, lon: 100.5018 },
+  'Frankfurt, Germany': { lat: 50.1109, lon: 8.6821 },
+  'Amsterdam, Netherlands': { lat: 52.3676, lon: 4.9041 },
+  'Toronto, Canada': { lat: 43.6532, lon: -79.3832 },
+  'Vancouver, Canada': { lat: 49.2827, lon: -123.1207 },
+  'Madrid, Spain': { lat: 40.4168, lon: -3.7038 },
+  'Rome, Italy': { lat: 41.9028, lon: 12.4964 },
+}
+
 const COUNTRY_ALIASES = {
   USA: 'United States',
   US: 'United States',
@@ -126,6 +151,7 @@ function getApiDestination(destination) {
 
 function extractAttractions(payload) {
   if (Array.isArray(payload)) return payload
+  if (Array.isArray(payload?.features)) return payload.features
   if (Array.isArray(payload?.products)) return payload.products
   if (Array.isArray(payload?.result)) return payload.result
   if (Array.isArray(payload?.results)) return payload.results
@@ -171,38 +197,44 @@ function getIcon(category) {
 }
 
 function mapAttraction(item, index, searchParams, normalizedDestination) {
+  const place = item.properties || item
+
   const adultCount = Number(searchParams.adults) || 1
   const childCount = Math.max(0, Number(searchParams.children) || 0)
   const passengers = Math.max(1, adultCount + childCount)
-  const category = getCategory(item)
-  const pricePerPerson = Math.round((getPricePerPerson(item) || 0) * 100) / 100
 
   return {
-    id: String(item.id ?? item.attraction_id ?? item.slug ?? `ACT-${index}`),
-    name: item.name || item.title || item.attraction_name || 'Activity',
-    category,
-    icon: getIcon(category),
+    id: String(place.place_id ?? place.id ?? `PARK-${index}`),
+
+    name:
+      place.name
+      || place.address_line1
+      || 'Park',
+
+    category:
+      place.categories?.[0]
+      || 'Park',
+
+    icon: '🌳',
+
     location: normalizedDestination,
-    duration: item.duration || item.duration_text || item.length || '2h',
-    pricePerPerson,
-    totalPrice: Math.round(pricePerPerson * passengers * 100) / 100,
-    maxGroupSize: Number(item.max_group_size || 20),
-    rating: Number(
-      item.rating
-        || item.review_score
-        || item.numericReviewsStats?.average
-        || item.reviewsStats?.combinedNumericStats?.average
-        || 0
-    ).toFixed(1),
-    reviews: Number(
-      item.reviews
-        || item.review_nr
-        || item.review_count
-        || item.numericReviewsStats?.total
-        || item.reviewsStats?.allReviewsCount
-        || 0
-    ),
-    description: item.description || item.shortDescription || item.short_description || 'Enjoy a top-rated local experience.',
+
+    duration: '1-2h',
+
+    pricePerPerson: 0,
+
+    totalPrice: 0,
+
+    maxGroupSize: 20,
+
+    rating: '0.0',
+
+    reviews: 0,
+
+    description:
+      place.address_line2
+      || place.formatted
+      || 'Outdoor park or nature location.',
   }
 }
 
@@ -211,21 +243,22 @@ async function searchActivitiesViaApi(searchParams) {
     throw new Error('VITE_ACTIVITY_API_BASE_URL is not configured.')
   }
 
-  const { dest_name, country_name, normalizedDestination } = getApiDestination(searchParams.destination)
+  const { normalizedDestination } = getApiDestination(searchParams.destination)
+  const coordinates = CITY_COORDINATES[normalizedDestination]
+
+  if (!coordinates) {
+    throw new Error(`No park search coordinates configured for ${normalizedDestination}`)
+  }
 
   let response
 
   try {
     response = await axios.get(`${ACTIVITY_API_BASE_URL}/attractions/search`, {
       params: {
-        start_date: searchParams.fromDate,
-        end_date: searchParams.toDate,
-        dest_name,
-        country_name,
-        locale: 'en-gb',
-        page_number: 0,
-        currency: 'AED',
-        order_by: 'attr_book_score',
+        lat: coordinates.lat,
+        lon: coordinates.lon,
+        radius: 10000,
+        limit: 20,
       },
       headers: {
         accept: 'application/json',
@@ -234,9 +267,9 @@ async function searchActivitiesViaApi(searchParams) {
     })
   } catch (error) {
     if (isTimeoutError(error)) {
-      throw new Error('Activity search timed out. Please try again.')
+      throw new Error('Park search timed out. Please try again.')
     }
-    throw new Error(getApiErrorMessage(error, 'Activity search failed.'))
+    throw new Error(getApiErrorMessage(error, 'Park search failed.'))
   }
 
   return extractAttractions(response.data)
